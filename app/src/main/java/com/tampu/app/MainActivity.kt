@@ -2,7 +2,6 @@ package com.tampu.app
 
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -10,87 +9,86 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.google.android.gms.wearable.*
-import com.tampu.app.ui.theme.TampuTheme
 
 class MainActivity : ComponentActivity(), DataClient.OnDataChangedListener {
-
-    private val ritmo = mutableStateOf(0)
-    private val estres = mutableStateOf(0)
-    private val peso = mutableStateOf(0.0)
+    private var ritmo by mutableStateOf(0)
+    private var estres by mutableStateOf(0)
+    private var peso by mutableStateOf(0.0)
+    private var estadoConexion by mutableStateOf("Esperando datos...")
+    private val dataClient by lazy { Wearable.getDataClient(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         setContent {
-            TampuTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize()
-                ) { padding ->
-                    DatosRecibidosUI(
-                        modifier = Modifier.padding(padding),
-                        ritmo = ritmo.value,
-                        estres = estres.value,
-                        peso = peso.value
-                    )
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        MetricDisplay("❤️ Ritmo cardíaco", "$ritmo bpm")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        MetricDisplay("😰 Nivel de estrés", "$estres%")
+                        Spacer(modifier = Modifier.height(16.dp))
+                        MetricDisplay("⚖️ Peso estimado", "%.1f kg".format(peso))
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(estadoConexion, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
     }
 
-    override fun onDataChanged(dataEvents: DataEventBuffer) {
-        Log.d("PHONE_TAMPU", "📥 Datos recibidos en onDataChanged")
-        for (event in dataEvents) {
-            if (event.type == DataEvent.TYPE_CHANGED &&
-                event.dataItem.uri.path == "/datos_simulados"
-            ) {
-                val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
-                ritmo.value = dataMap.getInt("bpm")
-                estres.value = dataMap.getInt("estres")
-                peso.value = dataMap.getDouble("peso")
-
-                Log.d("PHONE_TAMPU", "✅ bpm=${ritmo.value}, estres=${estres.value}, peso=${peso.value}")
-
-                runOnUiThread {
-                    Toast.makeText(this, "Datos recibidos", Toast.LENGTH_SHORT).show()
-                }
-            }
+    @Composable
+    fun MetricDisplay(label: String, value: String) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.bodyMedium)
+            Text(value, style = MaterialTheme.typography.headlineMedium)
         }
     }
 
     override fun onStart() {
         super.onStart()
-        Wearable.getDataClient(this).addListener(this)
-        Log.d("PHONE_TAMPU", "🟢 Listener agregado en onStart")
+        dataClient.addListener(this)
+        checkConnection()
+    }
+
+    private fun checkConnection() {
+        Wearable.getNodeClient(this).connectedNodes.addOnSuccessListener { nodes ->
+            estadoConexion = if (nodes.isNotEmpty()) {
+                "Conectado a: ${nodes[0].displayName}"
+            } else {
+                "No hay dispositivos conectados"
+            }
+        }
+    }
+
+    override fun onDataChanged(dataEvents: DataEventBuffer) {
+        try {
+            for (i in 0 until dataEvents.count) {
+                val event = dataEvents.get(i)
+                if (event.type == DataEvent.TYPE_CHANGED && event.dataItem.uri.path == "/metrics") {
+                    val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+                    ritmo = dataMap.getInt("ritmo")
+                    estres = dataMap.getInt("estres")
+                    peso = dataMap.getDouble("peso")
+                    estadoConexion = "Datos actualizados: ${System.currentTimeMillis() % 10000}"
+                    Log.d("TAMPU_PHONE", "Datos recibidos - Ritmo: $ritmo, Estrés: $estres, Peso: $peso")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("TAMPU_PHONE", "Error procesando datos", e)
+        } finally {
+            dataEvents.close()
+        }
     }
 
     override fun onStop() {
+        dataClient.removeListener(this)
         super.onStop()
-        Wearable.getDataClient(this).removeListener(this)
-        Log.d("PHONE_TAMPU", "🔴 Listener removido en onStop")
-    }
-}
-
-@Composable
-fun DatosRecibidosUI(
-    modifier: Modifier = Modifier,
-    ritmo: Int,
-    estres: Int,
-    peso: Double
-) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Bienvenido a Tampu", fontSize = 22.sp)
-        Spacer(modifier = Modifier.height(16.dp))
-        Text("Ritmo cardíaco: $ritmo bpm")
-        Text("Nivel de estrés: $estres%")
-        Text("Variación de peso: ${"%.1f".format(peso)} kg")
     }
 }
