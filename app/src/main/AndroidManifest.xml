@@ -26,6 +26,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".MetricasActivity" />
+        <activity android:name=".ContactoSeguroActivity" />
+        <activity android:name=".ConfigurarContactoActivity" />
+        <activity android:name=".PerfilActivity" />
+        <activity android:name=".ConfigurarPerfilActivity" />
 
     </application>
 
